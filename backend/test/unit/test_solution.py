@@ -1,84 +1,112 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from src.controllers.recipecontroller import RecipeController
-from src.util.dao import getDao, DAO
+from src.static.diets import Diet
 
 @pytest.fixture
-def mock_dao():
-    """Fixture to mock the DAO object with predefined responses."""
-    with patch('src.util.dao.DAO') as mock_dao_class:
-        mock_dao_instance = mock_dao_class.return_value
-        yield mock_dao_instance
-
-@pytest.fixture
-def recipe_controller(mock_dao):
-    """Fixture to create a RecipeController instance with the mocked DAO."""
-    return RecipeController(mock_dao)
+def recipe_controller():
+    """
+    Fixture to create a RecipeController instance.
+    This allows each test to use a fresh instance of RecipeController.
+    """
+    return RecipeController(None)
 
 @pytest.mark.unit
 class TestRecipeController:
     """
-    TestRecipeController class docstring
+    TestRecipeController class for testing the get_recipe method.
+    Each test method in this class tests a specific scenario for the get_recipe method.
     """
 
-    # TC1: All Requirements Met
-    def test_get_available_items_all_criteria_met(self, recipe_controller, mock_dao):
+    @patch('src.controllers.recipecontroller.RecipeController.get_readiness_of_recipes')
+    def test_get_recipe_optimal(self, mock_get_readiness_of_recipes, recipe_controller):
         """
-        Test the behavior of the get_available_items method when all items meet the criteria.
+        Test the behavior of the get_recipe method when take_best is True.
+        The method should return the recipe with the highest readiness value.
         """
-        mock_dao.find.return_value = [
-            {"name": "Apple", "quantity": 10.0, "unit": "kg"},
-            {"name": "Banana", "quantity": 5.0, "unit": "kg"}
-        ]
-        result = recipe_controller.get_available_items(minimum_quantity=1)
-        assert len(result) == 2
-        assert "Apple" in result
-        assert "Banana" in result
+        # Mock the get_readiness_of_recipes method to return predefined readiness values
+        mock_get_readiness_of_recipes.return_value = {'Recipe1': 1.0, 'Recipe2': 0.5}
 
-    # TC2: No Items Meet Minimum Quantity
-    def test_get_available_items_no_items_meet_criteria(self, recipe_controller, mock_dao):
-        """
-        Test the behavior of the get_available_items method when no items meet the criteria.
-        """
-        mock_dao.find.return_value = [
-            {"name": "Apple", "quantity": 10.0, "unit": "kg"},
-            {"name": "Banana", "quantity": 5.0, "unit": "kg"}
+        # Define the recipes in the recipe controller
+        recipe_controller.recipes = [
+            {'name': 'Recipe1', 'diets': ['vegan'], 'ingredients': {'item1': 1, 'item2': 2}},
+            {'name': 'Recipe2', 'diets': ['vegetarian'], 'ingredients': {'item1': 2, 'item3': 3}}
         ]
-        result = recipe_controller.get_available_items(minimum_quantity=11)
-        assert len(result) == 0
 
-    # TC3: Incorrect Data Type
-    def test_get_available_items_with_incorrect_data_type(self, recipe_controller, mock_dao):
-        """
-        Test the behavior of the get_available_items method with incorrect data type.
-        """
-        mock_dao.find.return_value = [
-            {"name": "Apple", "quantity": 10.0, "unit": "kg"},
-            {"name": "Banana", "quantity": '5', "unit": "kg"}  # Quantity as string
-        ]
-        with pytest.raises(TypeError):
-            recipe_controller.get_available_items(minimum_quantity=1)
+        # Call the get_recipe method and assert that it returns the optimal recipe
+        result = recipe_controller.get_recipe(diet=Diet.VEGAN, take_best=True)
+        assert result == 'Recipe1'
 
-    # TC4: Data Type and Quantity Mismatch
-    def test_get_available_items_data_type_and_quantity_mismatch(self, recipe_controller, mock_dao):
+    @patch('src.controllers.recipecontroller.RecipeController.get_readiness_of_recipes')
+    def test_get_recipe_random(self, mock_get_readiness_of_recipes, recipe_controller):
         """
-        Test the behavior of the get_available_items method with incorrect data type and items meeting the quantity.
+        Test the behavior of the get_recipe method when take_best is False.
+        The method should return a random recipe that meets the dietary criteria.
         """
-        mock_dao.find.return_value = [
-            {"name": "Apple", "quantity": '10.0', "unit": "kg"},  # Quantity as string
-            {"name": "Banana", "quantity": 5.0, "unit": "kg"}
-        ]
-        with pytest.raises(TypeError):
-            recipe_controller.get_available_items(minimum_quantity=1)
+        # Mock the get_readiness_of_recipes method to return predefined readiness values
+        mock_get_readiness_of_recipes.return_value = {'Recipe1': 1.0, 'Recipe2': 0.5}
 
-    # TC5: Missing Fields
-    def test_get_available_items_missing_fields(self, recipe_controller, mock_dao):
-        """
-        Test the behavior of the get_available_items method with missing fields.
-        """
-        mock_dao.find.return_value = [
-            {"name": "Apple"},
-            {"name": "Banana", "quantity": 5.0, "unit": "kg"}
+        # Define the recipes in the recipe controller
+        recipe_controller.recipes = [
+            {'name': 'Recipe1', 'diets': ['vegan'], 'ingredients': {'item1': 1, 'item2': 2}},
+            {'name': 'Recipe2', 'diets': ['vegetarian'], 'ingredients': {'item1': 2, 'item3': 3}}
         ]
-        with pytest.raises(KeyError):
-            recipe_controller.get_available_items(minimum_quantity=1)
+
+        # Mock the random.randint function to control the random choice
+        with patch('random.randint', return_value=1):
+            result = recipe_controller.get_recipe(diet=Diet.VEGAN, take_best=False)
+            assert result == 'Recipe2'
+
+    @patch('src.controllers.recipecontroller.RecipeController.get_readiness_of_recipes')
+    def test_no_qualifying_recipes(self, mock_get_readiness_of_recipes, recipe_controller):
+        """
+        Test the behavior of the get_recipe method when no recipes meet the readiness criteria.
+        The method should return None in this case.
+        """
+        # Mock the get_readiness_of_recipes method to return no qualifying recipes
+        mock_get_readiness_of_recipes.return_value = {}
+
+        # Define the recipes in the recipe controller
+        recipe_controller.recipes = [
+            {'name': 'Recipe1', 'diets': ['vegan'], 'ingredients': {'item1': 1, 'item2': 2}},
+            {'name': 'Recipe2', 'diets': ['vegetarian'], 'ingredients': {'item1': 2, 'item3': 3}}
+        ]
+
+        # Call the get_recipe method and assert that it returns None
+        result = recipe_controller.get_recipe(diet=Diet.VEGAN, take_best=True)
+        assert result is None
+
+    @patch('src.controllers.recipecontroller.RecipeController.get_readiness_of_recipes')
+    def test_dietary_non_compliance(self, mock_get_readiness_of_recipes, recipe_controller):
+        """
+        Test the behavior of the get_recipe method when recipes do not comply with the specified diet.
+        The method should return None in this case.
+        """
+        # Mock the get_readiness_of_recipes method to return no qualifying recipes
+        mock_get_readiness_of_recipes.return_value = {}
+
+        # Define the recipes in the recipe controller
+        recipe_controller.recipes = [
+            {'name': 'Recipe1', 'diets': ['normal'], 'ingredients': {'item1': 1, 'item2': 2}},
+            {'name': 'Recipe2', 'diets': ['normal'], 'ingredients': {'item1': 2, 'item3': 3}}
+        ]
+
+        # Call the get_recipe method and assert that it returns None
+        result = recipe_controller.get_recipe(diet=Diet.VEGAN, take_best=True)
+        assert result is None
+
+    @patch('src.controllers.recipecontroller.RecipeController.get_readiness_of_recipes')
+    def test_no_recipes_available(self, mock_get_readiness_of_recipes, recipe_controller):
+        """
+        Test the behavior of the get_recipe method when no recipes are available.
+        The method should return None in this case.
+        """
+        # Mock the get_readiness_of_recipes method to return no qualifying recipes
+        mock_get_readiness_of_recipes.return_value = {}
+
+        # Define an empty list of recipes in the recipe controller
+        recipe_controller.recipes = []
+
+        # Call the get_recipe method and assert that it returns None
+        result = recipe_controller.get_recipe(diet=Diet.VEGAN, take_best=True)
+        assert result is None
